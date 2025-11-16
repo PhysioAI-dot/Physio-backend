@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import Response
 from pydantic import BaseModel
 from datetime import datetime
@@ -45,8 +45,6 @@ def create_ticket(ticket: CallbackTicket):
 # Twilio Voice Webhook
 # -------------------------------
 
-from fastapi.responses import Response
-
 @app.post("/twilio-webhook")
 async def twilio_webhook(request: Request):
     """
@@ -67,6 +65,7 @@ async def twilio_webhook(request: Request):
 
 import os
 import asyncio
+import base64
 from openai import AsyncOpenAI
 
 # Hol API-Key aus Render Environment
@@ -88,8 +87,6 @@ async def start_realtime_session():
         print("⚠️ Fehler bei Realtime:", e)
         return None
 # WICHTIG: fehlender Import
-from fastapi import WebSocket, Request
-import base64
 
 @app.websocket("/media-stream")
 async def media_stream(websocket: WebSocket):

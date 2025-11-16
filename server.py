@@ -6,7 +6,7 @@ from datetime import datetime
 app = FastAPI()
 
 # -------------------------------
-# Callback-Ticket Datenmodell
+# Callback-Ticket Modell
 # -------------------------------
 
 class CallbackTicket(BaseModel):
@@ -18,7 +18,7 @@ class CallbackTicket(BaseModel):
     preferred_time: str | None = None
     notes: str | None = None
 
-# Speicher (simuliert)
+# Simulierter Speicher
 tickets = []
 
 @app.get("/")
@@ -35,28 +35,20 @@ def create_ticket(ticket: CallbackTicket):
         "urgency": ticket.urgency,
         "has_prescription": ticket.has_prescription,
         "preferred_time": ticket.preferred_time,
-        "notes": ticket.notes,
+        "notes": ticket.notes
     }
     tickets.append(entry)
     print("🔥 NEUES TICKET:", entry)
-
-    return {
-        "message": "Rückruf-Ticket erfolgreich erstellt.",
-        "received_data": ticket.dict()
-    }
+    return {"message": "Rückruf-Ticket erfolgreich erstellt.", "received_data": ticket.dict()}
 
 # -------------------------------
-# Voice Webhook für Twilio
+# Twilio Voice Webhook
 # -------------------------------
 
-@app.api_route("/voice", methods=["GET", "POST"])
+@app.post("/voice")
 async def voice_webhook():
-    twiml = """
-    <?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-        <Say voice="Polly.Marlene-Neural">
-            Hallo, ich bin Ihr KI Telefonassistent. Wie kann ich Ihnen helfen?
-        </Say>
-    </Response>
-    """
+    twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Marlene-Neural">Hallo, ich bin Ihr KI-Telefonassistent. Wie kann ich Ihnen helfen?</Say>
+</Response>"""
     return Response(content=twiml, media_type="application/xml")

@@ -55,3 +55,25 @@ async def voice_webhook():
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
 
+import os
+import asyncio
+from openai import AsyncOpenAI
+
+# Hol API-Key aus Render Environment
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+async def start_realtime_session():
+    """
+    Baut eine Realtime-Session zu OpenAI auf.
+    Noch ohne Audio-Streaming – kommt in Schritt 3.
+    """
+    try:
+        session = await client.realtime.sessions.create(
+            model="gpt-4o-realtime-preview",  # oder gpt-5o-realtime wenn verfügbar
+            modalities=["audio", "text"],
+        )
+        print("🔌 Realtime Session gestartet:", session.id)
+        return session
+    except Exception as e:
+        print("⚠️ Fehler bei Realtime:", e)
+        return None

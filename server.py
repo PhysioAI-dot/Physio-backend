@@ -45,15 +45,25 @@ def create_ticket(ticket: CallbackTicket):
 # Twilio Voice Webhook
 # -------------------------------
 
-@app.api_route("/voice", methods=["GET", "POST"])
-async def voice_webhook():
-    twiml = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Say voice="Polly.Marlene-Neural">
-        Hallo, ich bin Ihr KI Telefonassistent. Wie kann ich Ihnen helfen?
-    </Say>
-</Response>"""
-    return Response(content=twiml, media_type="application/xml")
+from fastapi.responses import Response
+
+@app.post("/twilio-webhook")
+async def twilio_webhook(request: Request):
+    """
+    Twilio Webhook: Startet einen Media Stream zu unserem WebSocket-Endpunkt.
+    Twilio ruft diese URL bei jedem eingehenden Anruf an.
+    """
+
+    twiml = f"""
+    <Response>
+        <Start>
+            <Stream url="wss://{request.url.hostname}/media-stream" />
+        </Start>
+        <Say voice="alice">Bitte warten Sie, Bella verbindet sich gleich.</Say>
+    </Response>
+    """
+
+    return Response(content=twiml, media_type="text/xml")
 
 import os
 import asyncio
@@ -77,3 +87,56 @@ async def start_realtime_session():
     except Exception as e:
         print("⚠️ Fehler bei Realtime:", e)
         return None
+# WICHTIG: fehlender Import
+from fastapi import WebSocket, Request
+import base64
+
+@app.websocket("/media-stream")
+async def media_stream(websocket: WebSocket):
+    await websocket.accept()
+
+    print("🔌 Twilio Medienstream verbunden")
+
+    # Realtime Session starten
+    session = await start_realtime_session()
+
+    if session is None:
+        await websocket.close()
+        print("❌ Realtime Session konnte nicht gestartet werden")
+        return
+
+    try:
+        while True:
+            msg = await websocket.receive_json()
+
+            # Wenn Twilio Audio schickt
+            if msg.get("event") == "media":
+                audio_b64 = msg["media"]["payload"]
+                audio_bytes = base64.b64decode(audio_b64)
+
+                # Audio an OpenAI senden
+                await client.realtime.sessions.send_audio(
+                    session=session.id,
+                    audio=audio_bytes
+                )
+
+            # Antworten von OpenAI abrufen
+            async for event in client.realtime.sessions.receive(session=session.id):
+                if event.type == "response.audio.delta":
+                    audio_chunk = event.delta
+
+                    # Audio zurück an Twilio
+                    audio_base64 = base64.b64encode(audio_chunk).decode()
+                    await websocket.send_json({
+                        "event": "media",
+                        "media": {
+                            "payload": audio_base64
+                        }
+                    })
+
+    except Exception as e:
+        print("⚠️ Fehler im MediaStream:", e)
+
+    finally:
+        await websocket.close()
+        print("🔌 Twilio Medienstream beendet")

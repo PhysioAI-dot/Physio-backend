@@ -49,13 +49,14 @@ def create_ticket(ticket: CallbackTicket):
 # Voice Webhook für Twilio
 # -------------------------------
 
-@app.post("/voice")
+@app.api_route("/voice", methods=["GET", "POST"])
 async def voice_webhook():
     twiml = """
     <?xml version="1.0" encoding="UTF-8"?>
     <Response>
-        <Say voice="Polly.Marlene-Neural">Hallo, ich bin Ihr KI Telefonassistent. Wie kann ich Ihnen helfen?</Say>
+        <Say voice="Polly.Marlene-Neural">
+            Hallo, ich bin Ihr KI Telefonassistent. Wie kann ich Ihnen helfen?
+        </Say>
     </Response>
     """
     return Response(content=twiml, media_type="application/xml")
-

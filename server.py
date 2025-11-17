@@ -45,23 +45,24 @@ def create_ticket(ticket: CallbackTicket):
 # Twilio Voice Webhook
 # -------------------------------
 
-@app.post("/twilio-webhook")
-async def twilio_webhook(request: Request):
+@app.post("/voice")
+async def voice(request: Request):
     """
-    Twilio Webhook: Startet einen Media Stream zu unserem WebSocket-Endpunkt.
-    Twilio ruft diese URL bei jedem eingehenden Anruf an.
+    Hauptroute für eingehende Twilio-Anrufe.
+    Startet den MediaStream und gibt eine kurze Sprachansage aus.
     """
 
     twiml = f"""
+    <?xml version="1.0" encoding="UTF-8"?>
     <Response>
         <Start>
             <Stream url="wss://{request.url.hostname}/media-stream" />
         </Start>
-        <Say voice="alice">Bitte warten Sie, Bella verbindet sich gleich.</Say>
+        <Say voice="alice">Bitte warten Sie, Bella verbindet sich jetzt.</Say>
     </Response>
     """
 
-    return Response(content=twiml, media_type="text/xml")
+    return Response(content=twiml.strip(), media_type="application/xml")
 
 import os
 import asyncio

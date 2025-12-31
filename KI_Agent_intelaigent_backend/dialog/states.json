@@ -1,0 +1,68 @@
+{
+  "START": {
+    "next": "GREETING"
+  },
+
+  "GREETING": {
+    "prompt": "Guten Tag, Sie sprechen mit dem Termin-Assistenten der Praxis Dr. Müller. Wie kann ich Ihnen helfen?",
+    "on_intent": {
+      "booking": "CHECK_EXISTING_PATIENT",
+      "reschedule": "HANDLE_RESCHEDULE",
+      "cancel": "HANDLE_CANCEL",
+      "info": "HANDLE_INFO"
+    }
+  },
+
+  "CHECK_EXISTING_PATIENT": {
+    "prompt": "Verstehe. Sind Sie bereits Patientin oder Patient bei uns?",
+    "save": "patient_status",
+    "next": "SELECT_REASON"
+  },
+
+  "SELECT_REASON": {
+    "prompt": "Worum geht es bei dem Termin – um eine Routine-Kontrolle, eine akute Beschwerde oder etwas anderes?",
+    "save": "appointment_reason",
+    "next": "ASK_TIME_WINDOW"
+  },
+
+  "ASK_TIME_WINDOW": {
+    "prompt": "Für welchen Tag oder Zeitraum suchen Sie einen Termin?",
+    "save": "time_window",
+    "next": "PROPOSE_SLOTS"
+  },
+
+  "PROPOSE_SLOTS": {
+    "prompt": "Sehr gut. Ich hätte heute noch Termine um 9:15 Uhr oder um 11:30 Uhr. Welcher passt für Sie am besten?"
+ ,
+    "save": "selected_slot",
+    "next": "COLLECT_NAME"
+  },
+
+  "COLLECT_NAME": {
+    "prompt": "Perfekt, dann halte ich den Termin für Sie fest. Wie ist Ihr vollständiger Name?",
+    "save": "name",
+    "next": "COLLECT_PHONE"
+  },
+
+  "COLLECT_PHONE": {
+    "prompt": "Vielen Dank. Unter welcher Telefonnummer können wir Sie für Rückfragen erreichen?",
+    "save": "phone",
+    "next": "END_SUCCESS"
+  },
+
+  "END_SUCCESS": {
+    "prompt": "Vielen Dank für Ihren Anruf. Wir melden uns zeitnah bei Ihnen. Einen schönen Tag noch und auf Wiederhören."
+  },
+
+  "HANDLE_RESCHEDULE": {
+    "prompt": "Gerne. Um welchen Termin geht es genau?"
+  },
+
+  "HANDLE_CANCEL": {
+    "prompt": "Gerne. Welchen Termin möchten Sie absagen?"
+  },
+
+  "HANDLE_INFO": {
+    "prompt": "Gerne. Worum geht es bei Ihrer Anfrage?"
+  }
+}

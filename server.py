@@ -1,140 +1,217 @@
-from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import Response
-from pydantic import BaseModel
-from datetime import datetime
+# -------------------------------------------------
+# Standard Imports
+# -------------------------------------------------
+from fastapi import FastAPI, HTTPException, Depends, Query, Request, Body
+from typing import Optional
+from sqlalchemy.orm import Session
+from typing import List, Union
+from datetime import date
+from statistics import mean
 
-app = FastAPI()
+# Router
+from voice.router import router as voice_router
+from dashboard.router import router as dashboard_router
+from tickets.router import router as tickets_router
+from inbox.router import router as inbox_router
 
-# -------------------------------
-# Callback-Ticket Modell
-# -------------------------------
+# Twilio Handler
+from voice.twilio_handler import handle_twilio_webhook, handle_twilio_status
+from voice.test_handler import test_voice_webhook
 
-class CallbackTicket(BaseModel):
-    name: str
-    phone: str
-    concern: str
-    urgency: str | None = None
-    has_prescription: bool | None = None
-    preferred_time: str | None = None
-    notes: str | None = None
+# -------------------------------------------------
+# Datenbank
+# -------------------------------------------------
+from database import engine, Base, get_db
+import database_models  # wichtig für SQLAlchemy Metadata
+Base.metadata.create_all(bind=engine)
 
-# Simulierter Speicher
-tickets = []
+# -------------------------------------------------
+# Schemas
+# -------------------------------------------------
+from schemas import (
+    BookingRequest,
+    SlotModel,
+    TicketModel,
+    CallbackTicket,
+    PracticeId,
+    TicketStatus,
+)
 
+# Services
+from slots.dispatcher import get_slots_for_practice
+from booking.booking_flow import process_booking_request
+from calendar.calendar_service import CalendarService
+from tickets.service import list_tickets
+
+# -------------------------------------------------
+# App Initialisierung
+# -------------------------------------------------
+app = FastAPI(
+    title="IntelAiGent Backend",
+    description="Modulares KI-Agent Backend – Version B",
+    version="1.0.0",
+)
+
+app.include_router(tickets_router)
+app.include_router(dashboard_router)
+app.include_router(voice_router)
+app.include_router(inbox_router)
+
+calendar_service = CalendarService()
+
+# -------------------------------------------------
+# Twilio Webhooks
+# -------------------------------------------------
+@app.post("/voice/twilio-webhook")
+async def twilio_webhook(request: Request):
+    """Twilio Webhook für eingehende Voice-Anrufe"""
+    return await handle_twilio_webhook(request)
+
+@app.post("/voice/status")
+async def twilio_status(request: Request):
+    """Twilio Status Callback für Call-Events"""
+    return await handle_twilio_status(request)
+
+# -------------------------------------------------
+# KOSTENLOSER TEST-ENDPOINT (ohne echte Anrufe)
+# -------------------------------------------------
+@app.post("/voice/test")
+async def test_voice_post(
+    text: str,
+    from_number: str = "+491234567890",
+    practice_id: str = "physio_default_20min"
+):
+    """
+    🆓 KOSTENLOSER Test-Endpoint für Voice-Anrufe
+    
+    Simuliert Twilio Webhooks OHNE echte Anrufe!
+    
+    Nutzung:
+    POST /voice/test?text=Ich möchte einen Termin buchen&from_number=+491234567890
+    
+    Oder mit JSON Body:
+    POST /voice/test
+    {
+        "text": "Ich möchte einen Termin buchen",
+        "from_number": "+491234567890",
+        "practice_id": "physio_default_20min"
+    }
+    """
+    return await test_voice_webhook(text, from_number, practice_id)
+
+@app.get("/voice/test")
+async def test_voice_get(
+    text: str,
+    from_number: str = "+491234567890",
+    practice_id: str = "physio_default_20min"
+):
+    """
+    🆓 KOSTENLOSER Test-Endpoint (GET) für schnelles Testen im Browser
+    
+    Beispiel:
+    https://deine-url.onrender.com/voice/test?text=Ich möchte einen Termin buchen
+    """
+    return await test_voice_webhook(text, from_number, practice_id)
+
+# -------------------------------------------------
+# Health Check
+# -------------------------------------------------
 @app.get("/")
 def root():
-    return {"status": "Physio Backend live"}
-
-@app.post("/create_ticket")
-def create_ticket(ticket: CallbackTicket):
-    entry = {
-        "timestamp": datetime.now().isoformat(),
-        "name": ticket.name,
-        "phone": ticket.phone,
-        "concern": ticket.concern,
-        "urgency": ticket.urgency,
-        "has_prescription": ticket.has_prescription,
-        "preferred_time": ticket.preferred_time,
-        "notes": ticket.notes
+    return {
+        "status": "ok",
+        "message": "IntelAiGent Backend läuft.",
     }
-    tickets.append(entry)
-    print("🔥 NEUES TICKET:", entry)
-    return {"message": "Rückruf-Ticket erfolgreich erstellt.", "received_data": ticket.dict()}
 
-# -------------------------------
-# Twilio Voice Webhook
-# -------------------------------
-
-@app.post("/voice")
-async def voice(request: Request):
-    """
-    Hauptroute für eingehende Twilio-Anrufe.
-    Startet den MediaStream und gibt eine kurze Sprachansage aus.
-    """
-
-    twiml = f"""
-    <?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-        <Start>
-            <Stream url="wss://{request.url.hostname}/media-stream" />
-        </Start>
-        <Say voice="alice">Bitte warten Sie, Bella verbindet sich jetzt.</Say>
-    </Response>
-    """
-
-    return Response(content=twiml.strip(), media_type="application/xml")
-
-import os
-import asyncio
-import base64
-from openai import AsyncOpenAI
-
-# Hol API-Key aus Render Environment
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-async def start_realtime_session():
-    """
-    Baut eine Realtime-Session zu OpenAI auf.
-    Noch ohne Audio-Streaming – kommt in Schritt 3.
-    """
+# -------------------------------------------------
+# Slots abrufen
+# -------------------------------------------------
+@app.get("/slots", response_model=List[SlotModel])
+def get_slots(
+    practice_id: PracticeId,
+    date_str: str,
+):
     try:
-        session = await client.realtime.sessions.create(
-            model="gpt-4o-realtime-preview",  # oder gpt-5o-realtime wenn verfügbar
-            modalities=["audio", "text"],
-        )
-        print("🔌 Realtime Session gestartet:", session.id)
-        return session
-    except Exception as e:
-        print("⚠️ Fehler bei Realtime:", e)
-        return None
-# WICHTIG: fehlender Import
+        for_date = date.fromisoformat(date_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Ungültiges Datumsformat")
 
-@app.websocket("/media-stream")
-async def media_stream(websocket: WebSocket):
-    await websocket.accept()
+    return get_slots_for_practice(
+        practice_id=practice_id,
+        for_date=for_date,
+    )
 
-    print("🔌 Twilio Medienstream verbunden")
+# -------------------------------------------------
+# Booking auslösen
+# -------------------------------------------------
+from tickets.service import create_ticket
 
-    # Realtime Session starten
-    session = await start_realtime_session()
+@app.post("/book", response_model=Union[TicketModel, CallbackTicket])
+def book_appointment(
+    booking_request: BookingRequest,
+    db: Session = Depends(get_db),
+):
+    result = process_booking_request(booking_request)
 
-    if session is None:
-        await websocket.close()
-        print("❌ Realtime Session konnte nicht gestartet werden")
-        return
+    # 🔥 NUR WENN ES EIN TICKET IST → IN DB SPEICHERN
+    if isinstance(result, TicketModel):
+        create_ticket(db=db, ticket_model=result)
 
-    try:
-        while True:
-            msg = await websocket.receive_json()
+        if result.slot:
+            calendar_service.create_event(
+                title=f"Termin – {booking_request.patient_name}",
+                start=result.slot.start_time,
+                end=result.slot.end_time,
+                description="Gebucht über IntelAiGent",
+            )
 
-            # Wenn Twilio Audio schickt
-            if msg.get("event") == "media":
-                audio_b64 = msg["media"]["payload"]
-                audio_bytes = base64.b64decode(audio_b64)
+    return result
 
-                # Audio an OpenAI senden
-                await client.realtime.sessions.send_audio(
-                    session=session.id,
-                    audio=audio_bytes
-                )
 
-            # Antworten von OpenAI abrufen
-            async for event in client.realtime.sessions.receive(session=session.id):
-                if event.type == "response.audio.delta":
-                    audio_chunk = event.delta
+# ---------------------------------------------------------
+# DASHBOARD – SUMMARY (DB-basiert & mandantenfähig)
+# ---------------------------------------------------------
+@app.get("/api/dashboard/summary")
+def dashboard_summary(
+    practice_id: PracticeId = Query(..., description="Mandanten-ID"),
+    db: Session = Depends(get_db),
+):
+    tickets = list_tickets(db=db, practice_id=practice_id.value)
+    today = date.today()
 
-                    # Audio zurück an Twilio
-                    audio_base64 = base64.b64encode(audio_chunk).decode()
-                    await websocket.send_json({
-                        "event": "media",
-                        "media": {
-                            "payload": audio_base64
-                        }
-                    })
+    tickets_today = [
+        t for t in tickets
+        if t.created_at and t.created_at.date() == today
+    ]
 
-    except Exception as e:
-        print("⚠️ Fehler im MediaStream:", e)
+    total_today = len(tickets_today)
 
-    finally:
-        await websocket.close()
-        print("🔌 Twilio Medienstream beendet")
+    open_callbacks = [
+        t for t in tickets_today
+        if t.status == TicketStatus.CALLBACK
+    ]
+
+    successful = [
+        t for t in tickets_today
+        if t.status == TicketStatus.BOOKED
+    ]
+
+    success_rate = round((len(successful) / total_today) * 100) if total_today > 0 else 0
+
+    response_times = []
+    for t in successful:
+        if t.slot and t.slot.start_time:
+            delta = t.slot.start_time - t.created_at
+            minutes = int(delta.total_seconds() / 60)
+            if minutes >= 0:
+                response_times.append(minutes)
+
+    avg_response_time = round(mean(response_times)) if response_times else None
+
+    return {
+        "date": today.isoformat(),
+        "tickets_today": total_today,
+        "open_callbacks": len(open_callbacks),
+        "success_rate": success_rate,
+        "avg_response_time_minutes": avg_response_time,
+    }

@@ -7,6 +7,17 @@ from sqlalchemy.orm import Session
 from typing import List, Union
 from datetime import date
 from statistics import mean
+import logging
+
+# -------------------------------------------------
+# Logging-Konfiguration für Render
+# -------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger("twilio-agent")
 
 # Router
 from voice.router import router as voice_router

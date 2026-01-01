@@ -51,7 +51,7 @@ from schemas import (
 # Services
 from slots.dispatcher import get_slots_for_practice
 from booking.booking_flow import process_booking_request
-from calendar.calendar_service import CalendarService
+from physio_services.calendar_service import CalendarService
 from tickets.service import list_tickets
 
 # -------------------------------------------------
